@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StickyWords</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --red: #e63946;
+            --red-dark: #7f1d1d;
+            --red-faint: #fff1f2;
+            --red-mid: #fecaca;
+            --bg: #f5f4f0;
+            --white: #ffffff;
+            --border: #e2e0d8;
+            --text: #1a1a1a;
+            --muted: #71716a;
+            --overlay-w: 300px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'IBM Plex Mono', monospace;
+            background: var(--bg);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Top bar ── */
+        .topbar {
+            display: flex;
+            align-items: baseline;
+            gap: 18px;
+            padding: 22px 40px 18px;
+            border-bottom: 1.5px solid var(--border);
+            background: var(--bg);
+        }
+        .wordmark {
+            font-family: 'Syne', sans-serif;
+            font-weight: 800;
+            font-size: 1.45rem;
+            color: var(--text);
+            letter-spacing: -0.04em;
+        }
+        .wordmark span { color: var(--red); }
+        .tagline {
+            font-size: 0.65rem;
+            color: var(--muted);
+            letter-spacing: 0.06em;
+            padding-bottom: 2px;
+        }
+        .badge-live {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.62rem;
+            color: var(--red);
+            font-weight: 700;
+            letter-spacing: 0.1em;
+        }
+        .badge-live::before {
+            content: '';
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--red);
+            animation: blink 1.4s infinite;
+        }
+
+        /* ── Main two-column layout ── */
+        .main-layout {
+            display: flex;
+            flex: 1;
+            align-items: flex-start;
+            padding: 36px 40px 60px;
+            gap: 0;
+        }
+
+        /* ── LEFT: Editor column ── */
+        .editor-col {
+            flex: 0 0 50%;
+            max-width: 50%;
+            display: flex;
+            flex-direction: column;
+            padding-right: 16px;
+        }
+
+        .col-label {
+            font-size: 0.6rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .col-label::before {
+            content: '';
+            width: 5px; height: 5px;
+            border-radius: 50%;
+            background: var(--red);
+            animation: blink 2s infinite;
+        }
+
+        /* editor-wrap is the positioning context for the overlay */
+        .editor-wrap {
+            position: relative;
+            width: 100%;
+        }
+
+        #ghost-layer {
+            position: absolute;
+            inset: 0;
+            padding: 14px 16px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            line-height: 1.75;
+            color: transparent;
+            pointer-events: none;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow: hidden;
+            border: 1.5px solid transparent;
+            border-radius: 8px;
+            z-index: 0;
+            background: var(--white); /* <--- ADD THIS SO THE BACKGROUND IS HERE */
+        }
+
+        #editor {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            height: 220px;
+            padding: 14px 16px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14px;
+            line-height: 1.75;
+            color: var(--text);
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            resize: none;
+            outline: none;
+            transition: border-color 0.18s, box-shadow 0.18s;
+            caret-color: var(--red);
+            background: transparent !important; /* <--- FORCE TRANSPARENCY, DELETE var(--white) */
+        }
+        #editor:focus {
+            border-color: var(--red);
+            box-shadow: 0 0 0 3px rgba(230,57,70,0.07);
+        }
+        #editor::placeholder { color: #c0bdb4; }
+
+        #tab-hint {
+            position: absolute;
+            right: 10px; bottom: 10px;
+            background: #f0ede7;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 10px;
+            color: var(--muted);
+            padding: 2px 7px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 2;
+        }
+        #tab-hint.visible { opacity: 1; }
+
+        /* ── Suggestion overlay — positioned below editor-wrap ── */
+        #sticky-overlay {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 6px;
+            background: var(--white);
+            border: 1.5px solid var(--red);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.1), 0 2px 8px rgba(230,57,70,0.1);
+            border-radius: 10px;
+            display: none;
+            z-index: 1000;
+            width: var(--overlay-w);
+            overflow: hidden;
+            animation: popIn 0.13s ease both;
+        }
+        .overlay-header {
+            padding: 7px 12px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            border-bottom: 1px solid var(--red-mid);
+            background: var(--red-faint);
+        }
+        .logo-badge {
+            background: var(--red);
+            color: white;
+            font-family: 'Syne', sans-serif;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        .title-badge { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; }
+
+        .suggestion-row {
+            display: flex; align-items: center;
+            padding: 7px 12px;
+            cursor: pointer;
+            transition: background 0.12s;
+            gap: 10px;
+        }
+        .suggestion-row:hover { background: var(--red-faint); }
+        .suggestion-row.first-row { background: #fff8f8; }
+        .hotkey {
+            background: #f0ede7;
+            color: var(--muted);
+            font-size: 9px; font-weight: 700;
+            padding: 2px 5px; border-radius: 3px;
+            min-width: 16px; text-align: center; flex-shrink: 0;
+        }
+        .suggestion-row.first-row .hotkey { background: var(--red-mid); color: var(--red-dark); }
+        .suggestion-text { font-size: 13px; color: var(--text); flex-grow: 1; }
+        .suggestion-row.first-row .suggestion-text { color: var(--red-dark); font-weight: 700; }
+
+        /* GIF inside overlay */
+        #gif-box {
+            display: none;
+            border-top: 1px solid #f0ede7;
+            padding: 6px 8px 8px;
+            background: #fafaf8;
+            text-align: center;
+        }
+        #gif-box .gif-label {
+            font-size: 8px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: rgba(113,113,106,0.5);
+            display: block;
+            margin-bottom: 4px;
+            text-align: left;
+        }
+        #gif-box img {
+            max-width: 100%;
+            max-height: 120px;
+            border-radius: 5px;
+            display: block;
+            margin: 0 auto;
+            opacity: 0;
+            transition: opacity 0.25s;
+        }
+        #gif-box img.loaded { opacity: 1; }
+
+        .editor-footer {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+        .hint {
+            font-size: 0.63rem;
+            color: var(--muted);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .key-badge {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 1px 5px;
+            font-size: 0.6rem;
+            color: var(--text);
+        }
+
+        /* ── RIGHT: Dashboard column ── */
+        .dashboard-col {
+            flex: 0 0 50%;
+            max-width: 50%;
+            min-width: 0;
+        }
+
+        /* The single parent div wrapping all dashboard content */
+        .dashboard-inner {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background: var(--white);
+            border: 1.5px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        .section-label {
+            font-size: 0.6rem;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--muted);
+            display: flex;
+            align-items: center;
+        }
+
+        .refresh-trigger {
+            cursor: pointer;
+            color: var(--red);
+            font-weight: 700;
+            font-size: 0.6rem;
+            margin-left: auto;
+        }
+        .refresh-trigger:hover { text-decoration: underline; }
+
+        /* Stats strip */
+        .stats-strip {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .stat-box {
+            background: var(--bg);
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+        }
+        .stat-label-sub {
+            font-size: 0.56rem;
+            color: var(--muted);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            display: block;
+        }
+        .stat-val {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-top: 3px;
+            line-height: 1;
+        }
+        .stat-val.highlight { color: var(--red); }
+
+        /* Analytics rows */
+        .analytics-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            font-size: 12px;
+            transition: background 0.15s;
+        }
+        .analytics-row + .analytics-row { margin-top: 6px; }
+        .analytics-row:hover { background: #eeecea; }
+        .typo-text { color: var(--muted); text-decoration: line-through; font-weight: 700; }
+        .fix-text {
+            color: var(--red-dark); font-weight: 700;
+            background: var(--red-faint); padding: 1px 5px;
+            border-radius: 3px; border: 1px solid var(--red-mid);
+        }
+        .count-badge {
+            font-size: 10px; color: var(--text);
+            background: #e8e5de; padding: 2px 6px;
+            border-radius: 5px;
+        }
+        .row-actions { display: flex; gap: 5px; align-items: center; }
+        .btn-whitelist, .btn-ignore {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 9px;
+            padding: 3px 7px;
+            border-radius: 4px;
+            border: 1px solid;
+            cursor: pointer;
+            transition: all 0.13s;
+        }
+        .btn-whitelist { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+        .btn-whitelist:hover { background: #dcfce7; }
+        .btn-ignore { background: var(--bg); color: var(--muted); border-color: var(--border); }
+        .btn-ignore:hover { background: #eeecea; color: var(--text); }
+        .btn-added { font-size: 9px; color: #166534; background: #dcfce7; padding: 3px 7px; border-radius: 4px; border: 1px solid #bbf7d0; }
+
+        /* Charts */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            min-width: 0;
+            overflow: hidden;
+        }
+        .chart-box {
+            background: var(--bg);
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            overflow: hidden;
+            min-width: 0;
+            max-width: 100%;
+        }
+        .chart-box.full { grid-column: 1 / -1; }
+        .chart-title {
+            font-size: 0.56rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+        .chart-box canvas { max-height: 130px; max-width: 100%; }
+
+        /* App leaderboard */
+        .app-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .app-name { font-size: 10px; color: var(--text); min-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .app-bar-wrap { flex: 1; height: 6px; background: var(--border); border-radius: 99px; overflow: hidden; }
+        .app-bar { height: 100%; background: var(--red); border-radius: 99px; transition: width 0.5s ease; }
+        .app-pct { font-size: 10px; color: var(--muted); min-width: 30px; text-align: right; }
+
+        /* ── Animations ── */
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.96) translateY(-3px); }
+            to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.25; }
+        }
+
+        @media (max-width: 960px) {
+            .main-layout { flex-direction: column; padding: 24px 20px 40px; gap: 24px; }
+            .editor-col { flex: none; max-width: 100%; width: 100%; padding-right: 0; }
+            .dashboard-col { flex: none; max-width: 100%; width: 100%; }
+            .charts-grid { grid-template-columns: 1fr; }
+            .chart-box.full { grid-column: auto; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <div class="wordmark">Sticky<span>Words</span></div>
+    <div class="tagline">type incomplete words — predictions appear instantly</div>
+    <div class="badge-live">LIVE</div>
+</div>
+
+<div class="main-layout">
+
+    <!-- ── LEFT: Editor ── -->
+    <div class="editor-col">
+        <div class="col-label">Live editor — ghost text completion</div>
+
+        <!-- editor-wrap is position:relative — overlay sits inside it -->
+        <div class="editor-wrap">
+            <div id="ghost-layer" aria-hidden="true"></div>
+            <textarea id="editor" placeholder="Start typing... (e.g. hell, goin, wher) — Tab completes"></textarea>
+            <div id="tab-hint"><span class="key-badge">Tab</span> to complete</div>
+
+            <!-- overlay is a child of editor-wrap so top:100% lands just below the textarea -->
+            <div id="sticky-overlay">
+                <div class="overlay-header">
+                    <span class="logo-badge">SW</span>
+                    <span class="title-badge">StickyWords</span>
+                </div>
+                <div id="suggestions-list"></div>
+                <div id="gif-box">
+                    <span class="gif-label">GIF · top match</span>
+                    <img id="suggestion-gif" src="" alt="">
+                </div>
+            </div>
+        </div>
+
+        <div class="editor-footer">
+            <div class="hint">
+                <span class="key-badge">Tab</span> ghost complete
+                &nbsp;|&nbsp;
+                <span class="key-badge">1</span><span class="key-badge">2</span><span class="key-badge">3</span><span class="key-badge">4</span> pick suggestion
+            </div>
+        </div>
+    </div>
+
+    <!-- ── RIGHT: Dashboard ── -->
+    <div class="dashboard-col">
+        <!-- Single parent div, flex column, all stats inside -->
+        <div class="dashboard-inner">
+
+            <div class="section-label">
+                Analytics &amp; Telemetry
+                <span class="refresh-trigger" onclick="pullTelemetry()">[sync]</span>
+            </div>
+
+            <div class="stats-strip">
+                <div class="stat-box">
+                    <span class="stat-label-sub">Typos caught</span>
+                    <div id="stat-total" class="stat-val">0</div>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label-sub">Unique patterns</span>
+                    <div id="stat-unique" class="stat-val highlight">0</div>
+                </div>
+            </div>
+
+            <div>
+                <div class="section-label" style="margin-bottom:10px;">Top repeat errors</div>
+                <div id="analytics-list">
+                    <div style="font-size:11px; color:var(--muted); font-style:italic;">No data yet.</div>
+                </div>
+            </div>
+
+            <div>
+                <div class="section-label" style="margin-bottom:10px;">Charts</div>
+                <div class="charts-grid">
+                    <div class="chart-box">
+                        <div class="chart-title">Typos per hour</div>
+                        <canvas id="timelineChart"></canvas>
+                    </div>
+                    <div class="chart-box">
+                        <div class="chart-title">Top mistake pairs</div>
+                        <canvas id="mistakesChart"></canvas>
+                    </div>
+                    <div class="chart-box full">
+                        <div class="chart-title">Worst offender apps</div>
+                        <div id="app-breakdown">
+                            <div style="font-size:11px; color:var(--muted); font-style:italic;">No desktop data yet.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /.dashboard-inner -->
+    </div>
+
+</div>
+
+<script>
+// ═══════════════════════════════
+// GHOST TEXT ENGINE
+// ═══════════════════════════════
+
+const editor     = document.getElementById('editor');
+const ghostLayer = document.getElementById('ghost-layer');
+const tabHint    = document.getElementById('tab-hint');
+const overlay    = document.getElementById('sticky-overlay');
+const listEl     = document.getElementById('suggestions-list');
+const gifBox     = document.getElementById('gif-box');
+const gifImg     = document.getElementById('suggestion-gif');
+
+let currentSuggestions = [];
+let activeWord  = '';
+let ghostSuffix = '';
+let debounceT   = null;
+
+editor.addEventListener('scroll', () => {
+    ghostLayer.scrollTop  = editor.scrollTop;
+    ghostLayer.scrollLeft = editor.scrollLeft;
+});
+
+function esc(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+             .replace(/\n/g,'<br>').replace(/ /g,'&nbsp;');
+}
+
+function setGhost(suffix) {
+    ghostSuffix = suffix || '';
+    const val = editor.value;
+    const cur = editor.selectionEnd;
+    if (ghostSuffix) {
+        ghostLayer.innerHTML = esc(val.substring(0, cur))
+            + `<span class="ghost-text">${esc(ghostSuffix)}</span>`
+            + esc(val.substring(cur));
+        tabHint.classList.add('visible');
+    } else {
+        ghostLayer.innerHTML = esc(val);
+        tabHint.classList.remove('visible');
+    }
+}
+
+function clearGhost() {
+    ghostSuffix = '';
+    ghostLayer.innerHTML = esc(editor.value);
+    tabHint.classList.remove('visible');
+}
+
+function acceptGhost() {
+    if (!ghostSuffix) return;
+    const val = editor.value;
+    const cur = editor.selectionEnd;
+    editor.value = val.substring(0, cur) + ghostSuffix + ' ' + val.substring(cur);
+    const newPos = cur + ghostSuffix.length + 1;
+    editor.setSelectionRange(newPos, newPos);
+    fetch('/learn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ typed: activeWord, selected: currentSuggestions[0], app: 'Web Editor' })
+    }).then(() => pullTelemetry()).catch(() => {});
+    clearGhost();
+    hideOverlay();
+}
+
+// ═══════════════════════════════
+// INPUT
+// ═══════════════════════════════
+
+editor.addEventListener('input', () => {
+    if (!ghostSuffix) ghostLayer.innerHTML = esc(editor.value);
+    clearTimeout(debounceT);
+    debounceT = setTimeout(handleInput, 180);
+});
+
+editor.addEventListener('keydown', e => {
+    if (e.key === 'Tab' && ghostSuffix) { e.preventDefault(); acceptGhost(); return; }
+    if (overlay.style.display === 'block' && ['1','2','3','4'].includes(e.key)) {
+        const idx = parseInt(e.key) - 1;
+        if (idx < currentSuggestions.length) { e.preventDefault(); pickSuggestion(idx); }
+        return;
+    }
+    if (e.key === 'Escape') { hideOverlay(); clearGhost(); return; }
+    if (e.key === ' ' || e.key === 'Enter') { clearGhost(); hideOverlay(); }
+});
+
+async function handleInput() {
+    const text   = editor.value;
+    const cursor = editor.selectionEnd;
+    const start  = Math.max(text.lastIndexOf(' ', cursor - 1), text.lastIndexOf('\n', cursor - 1)) + 1;
+
+    activeWord = text.substring(start, cursor).replace(/[^\w']/g, '');
+    if (activeWord.length < 2) { clearGhost(); hideOverlay(); return; }
+
+    try {
+        const res  = await fetch('/predict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ word: activeWord })
+        });
+        const data = await res.json();
+        currentSuggestions = data.suggestions || [];
+
+        if (currentSuggestions.length > 0) {
+            const top   = currentSuggestions[0];
+            const lA    = activeWord.toLowerCase();
+            const lT    = top.toLowerCase();
+            if (lT.startsWith(lA) && lT !== lA) {
+                setGhost(top.substring(activeWord.length));
+            } else {
+                clearGhost();
+            }
+            renderOverlay(currentSuggestions);
+            fetchGif(currentSuggestions[0]);
+        } else {
+            clearGhost();
+            hideOverlay();
+        }
+    } catch { clearGhost(); hideOverlay(); }
+}
+
+// ═══════════════════════════════
+// OVERLAY
+// ═══════════════════════════════
+
+function renderOverlay(suggestions) {
+    listEl.innerHTML = '';
+    suggestions.forEach((s, i) => {
+        const row = document.createElement('div');
+        row.className = 'suggestion-row' + (i === 0 ? ' first-row' : '');
+        row.innerHTML = `<span class="hotkey">${i + 1}</span><span class="suggestion-text">${s}</span>`;
+        row.onclick = () => pickSuggestion(i);
+        listEl.appendChild(row);
+    });
+    overlay.style.display = 'block';
+}
+
+function pickSuggestion(index) {
+    const word   = currentSuggestions[index];
+    const text   = editor.value;
+    const cursor = editor.selectionEnd;
+    const start  = Math.max(text.lastIndexOf(' ', cursor - 1), text.lastIndexOf('\n', cursor - 1)) + 1;
+    editor.value = text.substring(0, start) + word + ' ' + text.substring(cursor);
+    const pos = start + word.length + 1;
+    editor.setSelectionRange(pos, pos);
+    fetch('/learn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ typed: activeWord, selected: word, app: 'Web Editor' })
+    }).then(() => pullTelemetry()).catch(() => {});
+    clearGhost();
+    hideOverlay();
+    editor.focus();
+}
+
+function hideOverlay() {
+    overlay.style.display = 'none';
+    gifBox.style.display  = 'none';
+    gifImg.src = '';
+    gifImg.classList.remove('loaded');
+}
+
+// ═══════════════════════════════
+// GIF — uses Giphy's public beta key
+// ═══════════════════════════════
+
+async function fetchGif(keyword) {
+    // Replaced with the stable classic public beta key
+    const url = `https://api.giphy.com/v1/gifs/search?api_key=vdYU7xfrwkgmkQL7zMmBZQtlqQ3jvsJi=${encodeURIComponent(keyword)}&limit=5&rating=g`;
+    try {
+        const res  = await fetch(url);
+        if (!res.ok) throw new Error('giphy fail');
+        const data = await res.json();
+        if (data.data && data.data.length > 0) {
+            const pick = data.data[Math.floor(Math.random() * data.data.length)];
+            gifImg.classList.remove('loaded');
+            gifImg.onload = () => gifImg.classList.add('loaded');
+            gifImg.src = pick.images.fixed_height_small.url;
+            gifBox.style.display = 'block';
+            return;
+        }
+    } catch {}
+    gifBox.style.display = 'none';
+}
+
+// ═══════════════════════════════
+// TELEMETRY
+// ═══════════════════════════════
+
+document.addEventListener('DOMContentLoaded', () => { pullTelemetry(); pullCharts(); });
+setInterval(() => { pullTelemetry(); pullCharts(); }, 5000);
+
+async function pullTelemetry() {
+    try {
+        const res  = await fetch('/api/stats');
+        const data = await res.json();
+        document.getElementById('stat-total').textContent  = data.total_corrections;
+        document.getElementById('stat-unique').textContent = data.unique_mistakes;
+
+        const list = document.getElementById('analytics-list');
+        list.innerHTML = '';
+        if (data.top_mistakes.length === 0) {
+            list.innerHTML = `<div style="font-size:11px;color:var(--muted);font-style:italic;">No data yet.</div>`;
+            return;
+        }
+        data.top_mistakes.forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'analytics-row';
+            row.id = `mistake-row-${item.typo}`;
+            row.innerHTML = `
+                <div style="display:flex;align-items:center;gap:7px;flex:1;min-width:0;">
+                    <span class="typo-text">${item.typo}</span>
+                    <span style="color:var(--muted);font-size:10px;">→</span>
+                    <span class="fix-text">${item.fix}</span>
+                </div>
+                <div class="row-actions">
+                    <span class="count-badge">${item.count}×</span>
+                    <button class="btn-whitelist" onclick="addToDict('${item.typo}',this)">+ dict</button>
+                    <button class="btn-ignore" onclick="ignoreTypo('${item.typo}',this)">ignore</button>
+                </div>`;
+            list.appendChild(row);
+        });
+    } catch(e) { console.error('telemetry error', e); }
+}
+
+async function addToDict(word, btn) {
+    btn.disabled = true; btn.textContent = '…';
+    try {
+        const res  = await fetch('/api/add_word', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({word}) });
+        const data = await res.json();
+        if (data.status === 'added' || data.status === 'already_known') {
+            const row = document.getElementById(`mistake-row-${word}`);
+            if (row) row.querySelector('.row-actions').innerHTML = `<span class="btn-added">✓ in dict</span>`;
+            pullTelemetry();
+        } else { btn.textContent = 'error'; }
+    } catch { btn.disabled = false; btn.textContent = '+ dict'; }
+}
+
+async function ignoreTypo(word, btn) {
+    btn.disabled = true; btn.textContent = '…';
+    try {
+        await fetch('/api/ignore_typo', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({word}) });
+        const row = document.getElementById(`mistake-row-${word}`);
+        if (row) { row.style.opacity = '0'; setTimeout(() => { row.remove(); pullTelemetry(); }, 300); }
+    } catch { btn.disabled = false; btn.textContent = 'ignore'; }
+}
+
+// ═══════════════════════════════
+// CHARTS
+// ═══════════════════════════════
+
+let timelineInst = null, mistakesInst = null;
+const chartBase = { responsive:true, maintainAspectRatio:true, plugins:{ legend:{ display:false } } };
+const grid = { color:'rgba(0,0,0,0.04)', drawBorder:false };
+
+async function pullCharts() {
+    await Promise.all([drawTimeline(), drawMistakesBar(), drawAppBreakdown()]);
+}
+
+async function drawTimeline() {
+    try {
+        const res  = await fetch('/api/timeline');
+        const data = await res.json();
+        const tl   = data.timeline;
+
+        const now = new Date();
+        const buckets = [];
+        for (let i = 23; i >= 0; i--) {
+            const d = new Date(now.getTime() - i * 60 * 60 * 1000);
+            const localKey = [
+                d.getFullYear(),
+                String(d.getMonth() + 1).padStart(2, '0'),
+                String(d.getDate()).padStart(2, '0')
+            ].join('-') + 'T' + String(d.getHours()).padStart(2, '0') + ':00';
+            buckets.push({ label: String(d.getHours()).padStart(2, '0') + ':00', value: tl[localKey] || 0 });
+        }
+
+        // Trim leading zeros — find first non-zero, keep 2 hours padding before it
+        const firstNonZero = buckets.findIndex(b => b.value > 0);
+        const start = firstNonZero > 2 ? firstNonZero - 2 : 0;
+        const trimmed = firstNonZero === -1 ? buckets : buckets.slice(start);
+
+        const labels = trimmed.map(b => b.label);
+        const values = trimmed.map(b => b.value);
+
+        const ctx = document.getElementById('timelineChart').getContext('2d');
+        const grad = ctx.createLinearGradient(0, 0, 0, 130);
+        grad.addColorStop(0, 'rgba(230,57,70,0.15)');
+        grad.addColorStop(1, 'rgba(230,57,70,0)');
+        if (timelineInst) timelineInst.destroy();
+        timelineInst = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{ data: values, borderColor: '#e63946', borderWidth: 1.5,
+                    backgroundColor: grad, fill: true, tension: 0.35,
+                    pointRadius: values.map(v => v > 0 ? 2.5 : 0),
+                    pointBackgroundColor: '#e63946', pointBorderColor: '#fff', pointBorderWidth: 1 }]
+            },
+            options: { ...chartBase, scales: {
+                x: { grid, ticks: { font: { family: 'IBM Plex Mono', size: 8 }, color: '#9ca3af', maxTicksLimit: 6 } },
+                y: { grid, ticks: { font: { family: 'IBM Plex Mono', size: 8 }, color: '#9ca3af', precision: 0 }, beginAtZero: true, suggestedMax: 10 }
+            }}
+        });
+    } catch(e) { console.error('timeline error', e); }
+}
+
+async function drawMistakesBar() {
+    try {
+        const res  = await fetch('/api/stats');
+        const data = await res.json();
+        const top5 = data.top_mistakes.slice(0,5);
+        if (!top5.length) return;
+        const ctx = document.getElementById('mistakesChart').getContext('2d');
+        if (mistakesInst) mistakesInst.destroy();
+        mistakesInst = new Chart(ctx, {
+            type:'bar',
+            data:{ labels:top5.map(m=>`${m.typo} → ${m.fix}`), datasets:[{ data:top5.map(m=>m.count), backgroundColor:['rgba(230,57,70,0.85)','rgba(230,57,70,0.65)','rgba(230,57,70,0.50)','rgba(230,57,70,0.35)','rgba(230,57,70,0.22)'], borderRadius:4, borderSkipped:false }] },
+            options:{ ...chartBase, indexAxis:'y', scales:{ x:{ grid, ticks:{ font:{ family:'IBM Plex Mono', size:8 }, color:'#9ca3af', precision:0 }, beginAtZero:true }, y:{ grid:{ display:false }, ticks:{ font:{ family:'IBM Plex Mono', size:8 }, color:'#374151' } } } }
+        });
+    } catch(e) { console.error('mistakes bar error', e); }
+}
+
+async function drawAppBreakdown() {
+    try {
+        const res  = await fetch('/api/app_stats');
+        const data = await res.json();
+        const apps = data.apps;
+        const el   = document.getElementById('app-breakdown');
+        if (!apps || !apps.length) {
+            el.innerHTML = `<div style="font-size:11px;color:var(--muted);font-style:italic;">No desktop app data yet.</div>`;
+            return;
+        }
+        el.innerHTML = apps.map(a => `
+            <div class="app-row">
+                <div class="app-name" title="${a.app}">${a.app}</div>
+                <div class="app-bar-wrap"><div class="app-bar" style="width:${a.pct}%"></div></div>
+                <div class="app-pct">${a.pct}%</div>
+                <div class="count-badge" style="margin-left:4px;">${a.count}×</div>
+            </div>`).join('');
+    } catch(e) { console.error('app breakdown error', e); }
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StickyWords</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Unbounded:wght@700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --red:      #ef4444;
+      --red-dark: #991b1b;
+      --red-faint:#fef2f2;
+      --red-mid:  #fee2e2;
+      --bg:       #f9f9f7;
+      --white:    #ffffff;
+      --border:   #e5e7eb;
+      --text:     #111827;
+      --muted:    #6b7280;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Space Mono', monospace;
+      background: var(--bg);
+      width: 300px;
+      min-height: 200px;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .wordmark {
+      font-family: 'Unbounded', sans-serif;
+      font-weight: 900;
+      font-size: 1.1rem;
+      color: var(--text);
+      letter-spacing: -0.03em;
+    }
+    .wordmark span { color: var(--red); }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 3px 8px;
+      border-radius: 99px;
+      background: #f0fdf4;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+
+    .status-pill.offline {
+      background: var(--red-faint);
+      color: var(--red-dark);
+      border-color: var(--red-mid);
+    }
+
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #22c55e;
+    }
+    .status-pill.offline .status-dot {
+      background: var(--red);
+    }
+
+    /* ── Stats grid ── */
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat-cell {
+      background: var(--white);
+      padding: 12px 14px;
+    }
+
+    .stat-label {
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .stat-val {
+      font-family: 'Unbounded', sans-serif;
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .stat-val.red { color: var(--red); }
+
+    /* ── App breakdown ── */
+    .section {
+      padding: 12px 16px;
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section-label {
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .app-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 7px;
+    }
+    .app-row:last-child { margin-bottom: 0; }
+
+    .app-name {
+      font-size: 10px;
+      color: var(--text);
+      min-width: 80px;
+      max-width: 80px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .bar-wrap {
+      flex: 1;
+      height: 6px;
+      background: var(--red-faint);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      background: var(--red);
+      border-radius: 99px;
+      transition: width 0.4s ease;
+    }
+
+    .app-pct {
+      font-size: 10px;
+      color: var(--muted);
+      min-width: 30px;
+      text-align: right;
+    }
+
+    /* ── Top mistakes ── */
+    .mistake-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #f3f4f6;
+      font-size: 11px;
+    }
+    .mistake-row:last-child { border-bottom: none; }
+
+    .typo  { color: var(--muted); text-decoration: line-through; font-weight: 700; }
+    .arrow { color: var(--muted); font-size: 10px; margin: 0 4px; }
+    .fix   {
+      color: var(--red-dark); font-weight: 700;
+      background: var(--red-faint);
+      padding: 1px 5px; border-radius: 3px;
+    }
+    .cnt {
+      font-size: 10px; color: var(--muted);
+      background: #f3f4f6; padding: 1px 6px;
+      border-radius: 4px;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .open-dash {
+      font-size: 10px;
+      color: var(--red);
+      cursor: pointer;
+      font-weight: 700;
+      text-decoration: none;
+      letter-spacing: 0.04em;
+    }
+    .open-dash:hover { text-decoration: underline; }
+
+    .sync-btn {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 5px;
+      padding: 3px 8px;
+      cursor: pointer;
+    }
+    .sync-btn:hover { background: var(--red-faint); color: var(--red-dark); border-color: var(--red-mid); }
+
+    /* ── Empty / loading states ── */
+    .empty {
+      font-size: 10px;
+      color: var(--muted);
+      font-style: italic;
+      padding: 4px 0;
+    }
+
+    .loading {
+      display: flex; align-items: center; justify-content: center;
+      height: 80px; color: var(--muted); font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="wordmark">Sticky<span>Words</span></div>
+  <div class="status-pill offline" id="status-pill">
+    <div class="status-dot"></div>
+    <span id="status-text">CONNECTING</span>
+  </div>
+</div>
+
+<div id="main-content">
+  <div class="loading">Loading stats…</div>
+</div>
+
+<div class="footer">
+  <a class="open-dash" id="open-dash" href="#" target="_blank">Open Dashboard ↗</a>
+  <button class="sync-btn" id="sync-btn">↺ Sync</button>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

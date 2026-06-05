@@ -1,0 +1,168 @@
+/**
+ * StickyWords — styles.css
+ * Injected into every page. All rules scoped to #sw-overlay / #sw-ghost.
+ * Colors, fonts, and radii match your Flask app exactly.
+ */
+
+/* ── Overlay panel ─────────────────────────────────────── */
+
+#sw-overlay {
+  all: initial;
+  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  position: fixed;
+  z-index: 2147483647;
+  display: none;
+  width: 300px;
+  background: #ffffff;
+  border: 1.5px solid #e63946;
+  border-radius: 10px;
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.10),
+    0 2px  8px rgba(230, 57, 70, 0.12);
+  overflow: hidden;
+  pointer-events: all;
+  animation: sw-pop 0.13s ease both;
+}
+
+@keyframes sw-pop {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+
+#sw-overlay .sw-hdr {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  background: #fff1f2;
+  border-bottom: 1px solid #fecaca;
+}
+
+#sw-overlay .sw-logo {
+  all: unset;
+  font-family: 'Syne', 'Arial Black', sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  background: #e63946;
+  color: #fff;
+  padding: 2px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+#sw-overlay .sw-brand {
+  all: unset;
+  font-size: 10px;
+  font-weight: 700;
+  color: #71716a;
+  letter-spacing: 0.08em;
+}
+
+/* ── Suggestion rows ─────────────────────────────────────── */
+
+#sw-overlay .sw-rows {
+  all: unset;
+  display: block;
+}
+
+#sw-overlay .sw-row {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f5f4f0;
+  transition: background 0.11s;
+}
+
+#sw-overlay .sw-row:last-child {
+  border-bottom: none;
+}
+
+#sw-overlay .sw-row--top {
+  background: #fff8f8;
+}
+
+#sw-overlay .sw-row:hover,
+#sw-overlay .sw-row--sel {
+  background: #fff1f2;
+}
+
+#sw-overlay .sw-row--top .sw-word {
+  color: #7f1d1d;
+  font-weight: 700;
+}
+
+#sw-overlay .sw-row--sel .sw-word {
+  color: #7f1d1d;
+}
+
+/* Hotkey badge */
+#sw-overlay .sw-num {
+  all: unset;
+  font-size: 9px;
+  font-weight: 700;
+  background: #f0ede7;
+  color: #71716a;
+  min-width: 16px;
+  text-align: center;
+  padding: 2px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+#sw-overlay .sw-row--top .sw-num,
+#sw-overlay .sw-row--sel .sw-num {
+  background: #fecaca;
+  color: #7f1d1d;
+}
+
+/* Word text */
+#sw-overlay .sw-word {
+  all: unset;
+  font-size: 13px;
+  color: #1a1a1a;
+  flex-grow: 1;
+}
+
+/* ── Footer ──────────────────────────────────────────────── */
+
+#sw-overlay .sw-foot {
+  all: unset;
+  display: block;
+  padding: 5px 12px 6px;
+  font-size: 9px;
+  color: #a0a09a;
+  background: #fafaf8;
+  border-top: 1px solid #f0ede7;
+  letter-spacing: 0.01em;
+}
+
+#sw-overlay .sw-foot kbd {
+  all: unset;
+  font-family: inherit;
+  font-size: 9px;
+  background: #f0ede7;
+  border: 1px solid #e2e0d8;
+  border-radius: 3px;
+  padding: 0 4px;
+  color: #1a1a1a;
+}
+
+/* ── Ghost text ──────────────────────────────────────────── */
+
+#sw-ghost {
+  all: initial;
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  z-index: 2147483646;
+  color: #b0ada6;   /* muted, clearly distinct from real text */
+  white-space: pre;
+  font-style: italic;
+}
