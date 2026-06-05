@@ -9,7 +9,7 @@ Additional/Helper files for the app are:
 
 vocab.txt -Main word list
 user_frequency.json - Your personal word usage (auto-generated)
-usage_stats.json - YCorrection history (auto-generated)
+usage_stats.json - Your Correction history (auto-generated)
 
 
 Please note that the app is Windows Only!!!
