@@ -1,7 +1,6 @@
-/**
- * StickyWords — popup.js
- * Fetches live stats from the background service worker and renders them.
- */
+
+// Fetches live stats from the background service worker and renders them.
+
 
 const SERVER = 'http://localhost:5000';
 
@@ -29,7 +28,6 @@ function renderStats(stats, appData) {
 
   let html = '';
 
-  // ── Stats grid ──
   html += `
     <div class="stats">
       <div class="stat-cell">
@@ -43,7 +41,6 @@ function renderStats(stats, appData) {
     </div>
   `;
 
-  // ── App breakdown ──
   if (apps.length > 0) {
     html += `<div class="section">
       <div class="section-label">Worst Offender Apps</div>`;
@@ -58,7 +55,6 @@ function renderStats(stats, appData) {
     html += `</div>`;
   }
 
-  // ── Top mistakes ──
   if (top.length > 0) {
     html += `<div class="section">
       <div class="section-label">Top Repeat Errors</div>`;

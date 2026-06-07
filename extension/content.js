@@ -1,10 +1,3 @@
-/**
- * StickyWords — content.js
- *
- * Intercepts typing everywhere: <input>, <textarea>, contentEditable
- * Proxies fetch via background.js to bypass CORS/Private Network errors.
- */
-
 (() => {
   'use strict';
 
