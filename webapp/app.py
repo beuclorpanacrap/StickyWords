@@ -7,7 +7,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-USAGE_FILE = "usage_stats.json"
+USAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "usage_stats.json")
 VOCAB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "expanded_vocabulary.txt")
 
 try:

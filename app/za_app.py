@@ -14,8 +14,10 @@ from pynput import keyboard
 
 MAX_SUGGESTIONS = 4
 DEBOUNCE_DELAY = 0.07
-USAGE_FILE = "usage_stats.json"
+USAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "usage_stats.json")
 PREDICTION_CACHE_MAX = 500
+
+_save_lock = threading.Lock()
 
 #scoring system:
 
@@ -84,11 +86,12 @@ def load_user_frequencies():
 def save_user_frequencies():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     path = os.path.join(script_dir, USER_FREQ_FILE)
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(user_freq, f, indent=2)
-    except Exception as e:
-        print(f"[FREQ ERROR] Could not save user frequencies: {e}")
+    with _save_lock:
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(user_freq, f, indent=2)
+        except Exception as e:
+            print(f"[FREQ ERROR] Could not save user frequencies: {e}")
 
 
 def record_user_word(word: str):
@@ -135,9 +138,10 @@ C = dict(
 #vocab
 
 WORD_LIST = []
+WORD_SET:  set[str] = set()
 
 def load_local_vocabulary():
-    global WORD_LIST
+    global WORD_LIST, WORD_SET
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     local_library_file = os.path.join(script_dir, "vocab.txt")
@@ -149,7 +153,7 @@ def load_local_vocabulary():
                 for line in f
                 if line.strip()
             ]
-
+        WORD_SET = set(WORD_LIST)
         print(f"\n[VOCAB] Loaded {len(WORD_LIST):,} words from vocab.txt\n")
 
     except Exception as e:
@@ -183,6 +187,59 @@ class GUITHREADINFO(ctypes.Structure):
     ]
 
 
+# app detect
+
+_BROWSER_CLASSES = {
+    "Chrome_WidgetWin_1",   
+    "MozillaWindowClass",   
+    "OperaWindowClass",     
+}
+
+def get_active_app_name() -> str:
+    try:
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        if not hwnd:
+            return "Unknown"
+        length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+        if length > 0:
+            buf = ctypes.create_unicode_buffer(length + 1)
+            ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+            title = buf.value.strip()
+            if title:
+                parts = [p.strip() for p in title.split(" - ")]
+                return parts[-1] if len(parts) > 1 else parts[0]
+        pid = ctypes.c_ulong(0)
+        ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        h_proc = ctypes.windll.kernel32.OpenProcess(0x0410, False, pid)
+        if h_proc:
+            buf2 = ctypes.create_unicode_buffer(260)
+            ctypes.windll.psapi.GetModuleFileNameExW(h_proc, None, buf2, 260)
+            ctypes.windll.kernel32.CloseHandle(h_proc)
+            exe = buf2.value
+            if exe:
+                name = os.path.splitext(os.path.basename(exe))[0]
+                _nice = {
+                    "chrome": "Google Chrome", "msedge": "Microsoft Edge",
+                    "firefox": "Firefox", "notepad": "Notepad",
+                    "Code": "Visual Studio Code", "Discord": "Discord",
+                }
+                return _nice.get(name, name)
+    except Exception:
+        pass
+    return "Unknown"
+
+def _foreground_is_browser() -> bool:
+    try:
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        if not hwnd:
+            return False
+        buf = ctypes.create_unicode_buffer(256)
+        ctypes.windll.user32.GetClassNameW(hwnd, buf, 256)
+        return buf.value in _BROWSER_CLASSES or "brave" in buf.value.lower()
+    except Exception:
+        return False
+
+
 #UI initialization
 
 class DesktopAssistantUI:
@@ -196,6 +253,7 @@ class DesktopAssistantUI:
         self.is_injecting = False
         self.last_foreground_hwnd = None
         self.last_foreground_title = ""
+        self._active_app = "Unknown"
         self.keyboard_controller = keyboard.Controller()
         self.prediction_cache = {}
         self.last_request_time = 0
@@ -232,23 +290,31 @@ class DesktopAssistantUI:
             self.usage_stats = {}
 
     def save_usage_stats(self):
-        try:
-            with open(USAGE_FILE, "w") as f:
-                json.dump(self.usage_stats, f, indent=2)
-        except:
-            pass
+        with _save_lock:
+            try:
+                with open(USAGE_FILE, "w") as f:
+                    json.dump(self.usage_stats, f, indent=2)
+            except:
+                pass
 
     def learn_choice(self, typed, selected):
-        typed = typed.lower()
-        selected = selected.lower()
-        if not typed:
+        import datetime
+        typed    = typed.lower().strip()
+        selected = selected.lower().strip()
+        if not typed or not selected:
             return
 
-        if typed not in self.usage_stats:
-            self.usage_stats[typed] = {}
-        if selected not in self.usage_stats[typed]:
-            self.usage_stats[typed][selected] = 0
-        self.usage_stats[typed][selected] += 1
+        self.usage_stats.setdefault(typed, {})
+        self.usage_stats[typed][selected] = self.usage_stats[typed].get(selected, 0) + 1
+
+        app_key = f"__app__{self._active_app or 'Unknown'}"
+        self.usage_stats.setdefault(app_key, {})
+        self.usage_stats[app_key][typed] = self.usage_stats[app_key].get(typed, 0) + 1
+
+        hour_key = datetime.datetime.now().strftime("%Y-%m-%dT%H:00")
+        tl = self.usage_stats.setdefault("__timeline__", {})
+        tl[hour_key] = tl.get(hour_key, 0) + 1
+
         self.prediction_cache.pop(typed, None)
         self.save_usage_stats()
 
@@ -301,6 +367,15 @@ class DesktopAssistantUI:
             font=("Segoe UI", 9),
             bg=C["bg_header"],
         ).pack(side="left", pady=5)
+
+        self._app_label = tk.Label(
+            hdr,
+            text="",
+            fg=C["text_hint"],
+            bg=C["bg_header"],
+            font=("Segoe UI", 8),
+        )
+        self._app_label.pack(side="left", padx=(4, 0), pady=5)
 
         self._close_btn = tk.Label(
             hdr,
@@ -433,11 +508,34 @@ class DesktopAssistantUI:
     def _check_window_changed(self):
         try:
             hwnd = ctypes.windll.user32.GetForegroundWindow()
-            if not hwnd or hwnd != self._last_hwnd_for_buffer:
+            if not hwnd:
+                return
+
+            try:
+                my_hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
+                if hwnd in (my_hwnd, self.root.winfo_id()):
+                    return
+            except Exception:
+                pass
+
+            if _foreground_is_browser():
                 self.word_buffer = ""
                 self.hide_ui()
-            self._last_hwnd_for_buffer = hwnd
-        except:
+            elif self._last_hwnd_for_buffer and hwnd != self._last_hwnd_for_buffer:
+                self.word_buffer = ""
+                self.hide_ui()
+
+            if hwnd != self._last_hwnd_for_buffer:
+                self._last_hwnd_for_buffer = hwnd
+                app = get_active_app_name()
+                self._active_app = app
+                self.root.after(0, lambda a=app: self._app_label.config(
+                    text=f"· {a}" if a != "Unknown" else ""
+                ))
+            else:
+                self._last_hwnd_for_buffer = hwnd
+
+        except Exception:
             pass
 #keyboard eventts
     def on_key_press(self, key):
@@ -554,9 +652,10 @@ class DesktopAssistantUI:
         is_upper = active_word.isupper()
         lowered = active_word.lower()
 
-        if lowered in WORD_LIST:
-            self.hide_ui()
-            return
+        if lowered in WORD_SET:
+            if not any(w != lowered and w.startswith(lowered) for w in WORD_LIST):
+                self.hide_ui()
+                return
 
         if lowered in self.prediction_cache:
             raw_suggestions = self.prediction_cache[lowered]["suggestions"]
